@@ -10,9 +10,24 @@ from core.i18n import current_language
 
 SUPPORTED = ("es", "en", "fr")
 
+# The saved choice ("auto", "es", "en", "fr"), read from QSettings once.
+# ``tr`` runs thousands of times per tree refresh, and building a QSettings
+# for each call made a refresh of a 300-object model cost ~70 ms (1.4 s with
+# 6,000 objects) — every 220 ms while a tool edits the model.
+_choice = None
+
+
+def invalidate():
+    """Forget the cached choice (call after writing ``outliner/language``)."""
+    global _choice
+    _choice = None
+
 
 def language():
-    choice = QSettings().value("outliner/language", "auto", type=str)
+    global _choice
+    if _choice is None:
+        _choice = QSettings().value("outliner/language", "auto", type=str)
+    choice = _choice
     if choice == "auto":
         choice = current_language()
     code = choice.replace("_", "-").split("-")[0].lower()

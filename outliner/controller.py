@@ -27,6 +27,7 @@ class Controller(QObject):
         self._busy = False
         self._force = True
         self._language = None
+        self._decorated = {}
 
     def install(self):
         self.panel = Panel()
@@ -82,6 +83,10 @@ class Controller(QObject):
         return False
 
     def update_menu_icon(self):
+        key = self.app.window.palette().cacheKey()
+        if key == getattr(self, "_icon_palette", None):
+            return
+        self._icon_palette = key
         background = self.app.window.palette().color(QPalette.ColorRole.Window)
         name = "ja_tree_dark" if background.lightness() < 128 else "ja_tree"
         panel_icon = icon(name)
@@ -128,6 +133,8 @@ class Controller(QObject):
         if code not in ("auto", "es", "en", "fr"):
             return
         QSettings().setValue("outliner/language", code)
+        from . import i18n
+        i18n.invalidate()
         for value, action in self.panel.language_actions.items():
             action.setChecked(value == code)
         self.refresh()
@@ -204,6 +211,7 @@ class Controller(QObject):
         blocker = QSignalBlocker(self.tree)
         self.tree.clear()
         self.items = {}
+        self._decorated = {}
         root = QTreeWidgetItem(self.tree, [tr("Modelo"), "", ""])
         root.setData(0, ROLE, ROOT_KEY)
         root.setIcon(0, icon("model"))
@@ -241,6 +249,17 @@ class Controller(QObject):
         del blocker
 
     def decorate(self, item, node, open_keys):
+        # A refresh decorates every row; most rows have not changed, and the
+        # icons, fonts and translated tooltips are what made it slow.
+        state = (node.kind, node.name, node.tag, node.visible, node.locked,
+                 bool(getattr(node.entity, "hidden", False)),
+                 bool(getattr(node.entity, "active", False)),
+                 node.key in open_keys,
+                 tuple(g.name for g in node.ancestors),
+                 self.panel.palette().cacheKey(), language())
+        if self._decorated.get(id(item)) == state:
+            return
+        self._decorated[id(item)] = state
         item.setIcon(0, icon(node.kind))
         flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable
         if node.kind != "section":
